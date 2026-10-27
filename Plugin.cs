@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 
 namespace ReflectSix
 {
-    [BepInPlugin("com.matsix.reflectsix", "ReflectSix", "1.0.2")]
+    [BepInPlugin("com.matsix.reflectsix", "ReflectSix", "1.0.1")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource MyLog;
