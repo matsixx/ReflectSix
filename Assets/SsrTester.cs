@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// Editor test driver for Hidden/SPTVR/SSRSix. Attach to a camera, assign a Material that uses the SSR shader,
+// Editor test driver for Hidden/SPTVR/ReflectSix. Attach to a camera, assign a Material that uses the SSR shader,
 // and tune live in the inspector. Mirrors what SsrRenderer feeds the shader in-game (mono instead of
 // per-eye). The camera MUST use the DEFERRED rendering path — the tracer reads _CameraGBufferTexture1/2
 // (spec/smoothness + world normals); in forward there is no G-buffer and everything renders black.
@@ -10,7 +10,7 @@ using UnityEngine;
 [ImageEffectAllowedInSceneView]
 public class SsrTester : MonoBehaviour
 {
-    public Material ssrMat;          // a Material whose shader is "Hidden/SPTVR/SSRSix"
+    public Material ssrMat;          // a Material whose shader is "Hidden/SPTVR/ReflectSix"
 
     [Header("Look")]
     [Range(0, 2)] public float intensity = 1f;

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace SSRSix.Source
+namespace ReflectSix.Source
 {
     // Glass depth cap — the fix for the angle-banded reflection flip. Transparent glass writes no depth,
     // so a windshield is a HOLE in the depth buffer exposing the geometry behind it (vehicle interiors),
@@ -75,11 +75,11 @@ namespace SSRSix.Source
 
                 if (SsrConfig.Debug.Value && logged < 20)
                 {
-                    Plugin.MyLog.LogInfo($"[SSRSix] glass renderer: {r.name} ({mats.Length} mats)");
+                    Plugin.MyLog.LogInfo($"[ReflectSix] glass renderer: {r.name} ({mats.Length} mats)");
                     logged++;
                 }
             }
-            Plugin.MyLog.LogInfo($"[SSRSix] Glass depth cap: {_glass.Count} glass renderers found.");
+            Plugin.MyLog.LogInfo($"[ReflectSix] Glass depth cap: {_glass.Count} glass renderers found.");
         }
 
         public static void Clear()
@@ -107,7 +107,7 @@ namespace SSRSix.Source
 
             mat.SetMatrix("_SsrAugVP", GL.GetGPUProjectionMatrix(projRaster, true) * view);
 
-            if (_cb == null) _cb = new CommandBuffer { name = "SSRSix Glass Depth" };
+            if (_cb == null) _cb = new CommandBuffer { name = "ReflectSix Glass Depth" };
             _cb.Clear();
             // Base: the scene depth, colour = linear eye depth, SV_Depth = the raw value (so the glass
             // draws below ZTest against real scene depth). Blit binds the RT's own depth buffer.

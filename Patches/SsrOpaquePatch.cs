@@ -1,10 +1,10 @@
 using HarmonyLib;
-using SSRSix.Source;
+using ReflectSix.Source;
 using SPT.Reflection.Patching;
 using System.Reflection;
 using UnityEngine;
 
-namespace SSRSix.Patches
+namespace ReflectSix.Patches
 {
     // SSR has to composite at [ImageEffectOpaque] time: after the deferred opaques are lit (so there is a
     // scene to reflect and the G-buffer normals/smoothness belong to THIS frame's image), before transparents
@@ -29,8 +29,15 @@ namespace SSRSix.Patches
         [HarmonyPriority(Priority.First)]
         private static bool Prefix(TOD_Scattering __instance, RenderTexture source)
         {
-            if (SsrConfig.Enabled.Value)
+            if (!SsrConfig.Enabled.Value || SsrBench.Off) return true;
+            if (!SsrBench.Running) SsrRenderer.Render(__instance, source);
+            else
+            {
+                // the cost log: what this mod's own code takes on the main thread
+                long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                 SsrRenderer.Render(__instance, source);
+                SsrBench.OwnTicks += System.Diagnostics.Stopwatch.GetTimestamp() - t0;
+            }
             return true; // never consume the hook — fog/vanilla still runs source -> destination
         }
     }

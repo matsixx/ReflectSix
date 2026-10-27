@@ -1,10 +1,10 @@
-using SSRSix.Source;
+using ReflectSix.Source;
 using SPT.Reflection.Patching;
 using HarmonyLib;
 using System.Reflection;
 using UnityEngine.Rendering.PostProcessing;
 
-namespace SSRSix.Patches
+namespace ReflectSix.Patches
 {
     // Run WITH Tarkov's SSR enabled in settings, but never let it actually render.
     //
@@ -30,8 +30,11 @@ namespace SSRSix.Patches
         }
 
         [PatchPrefix]
-        private static bool Prefix(ref bool __result)
+        private static bool Prefix(ref bool __result, PostProcessRenderContext context)
         {
+            // A scope's camera without reflections of ours (Reflections In Scopes off, a thermal sight) is left
+            // to the game: whatever the game shows in a scope without this mod, it shows with it.
+            if (context != null && SsrRenderer.IsScope(context.camera) && !SsrRenderer.ScopeActive(context.camera)) return true;
             if (SsrConfig.Enabled.Value && SsrConfig.SuppressGameSsr.Value)
             {
                 __result = false;
