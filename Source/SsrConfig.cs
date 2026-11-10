@@ -17,13 +17,23 @@ namespace ReflectSix.Source
         ReflectionMask, // where SSR lands and how strongly (white = full reflection)
         ReflectionOnly, // the traced reflection colour on black
         HitDist,        // traced hit distance (sqrt-scaled against Max Distance; black = miss)
-        Coherence,      // normal coherence — the foliage detector (white = flat/coherent, dark = chaotic)
-        FoliageMask,    // what the foliage gate decides: red = F0/grass, green = normals/trees, black = keep
+        Coherence,      // normal coherence — Specular AA's variance measure (white = flat/coherent, dark = chaotic)
+        InstancedFoliage, // what GPU Instancer drew (blue): where Instanced Foliage Reflection applies
         TraceEnd,       // why each ray ended: green=hit yellow=rejected red=budget blue=miss cyan=sky magenta=selfz
         ProbeRefl,      // the game's baked-probe specular buffer (_CameraReflectionsTexture)
         SceneMip,       // the sanitized scene copy at mip 3 — what the cone fetch / firefly reference read
         HistoryLength,  // new denoiser: frames accumulated per pixel (green), red = history rejected, blue = edge fetch
         MotionCheck,    // new denoiser: motion vectors vs camera-only motion (static world must stay black)
+        GameReflection, // the game's own cube reflection: what Blend Like The Game takes out where ours lands
+        Occlusion,      // G-buffer occlusion: what Occlusion Dims Reflections weighs by (trees and grass are drawn black)
+    }
+
+    // How the reflection's strength (and blur) follows smoothness.
+    internal enum ESsrGlossCurve
+    {
+        Off,                // Unity's curve: edge-on reflectance = smoothness + reflectivity
+        Strength,           // the game SSR's: smoothness cubed for the edge-on reflectance
+        StrengthAndBlur,    // and for the blur too (rougher, softer reflections on everything not mirror-like)
     }
 
     // Which of the denoiser's passes run at half resolution.
@@ -54,7 +64,6 @@ namespace ReflectSix.Source
         public static ConfigEntry<float> Intensity;
         public static ConfigEntry<float> SmoothnessCutoff;
         public static ConfigEntry<float> ReflSoftness;
-        public static ConfigEntry<float> Foliage;
         public static ConfigEntry<float> RainFlow;
         public static ConfigEntry<float> EdgeFade;
         public static ConfigEntry<bool> Glossy;
@@ -63,7 +72,6 @@ namespace ReflectSix.Source
         public static ConfigEntry<bool> Stochastic;
         public static ConfigEntry<float> SpecularAA;
         public static ConfigEntry<float> Firefly;
-        public static ConfigEntry<float> FoliageF0;
         public static ConfigEntry<float> SelfExclusion;
         public static ConfigEntry<float> SkimRejection;
         public static ConfigEntry<bool> SkyRefl;
@@ -72,6 +80,10 @@ namespace ReflectSix.Source
         public static ConfigEntry<bool> WorldRaysRt;
         public static ConfigEntry<bool> RtOnly;
         public static ConfigEntry<bool> NoBakedCube;
+        public static ConfigEntry<ESsrGlossCurve> GlossCurve;
+        public static ConfigEntry<bool> GameBlend;
+        public static ConfigEntry<float> InstancedFoliage;
+        public static ConfigEntry<bool> OcclusionDims;
 
         // Quality / performance
         public static ConfigEntry<bool> NewDenoiser;
@@ -144,22 +156,41 @@ namespace ReflectSix.Source
                 new ConfigDescription("Strength of the reflections. 1 = physically-motivated (fresnel-weighted); " +
                     "lower if surfaces look like chrome mirrors, raise for a stylized wet look.",
                     new AcceptableValueRange<float>(0f, 2f)));
-            SmoothnessCutoff = config.Bind("Look", "Smoothness Cutoff", 0.55f,
+            SmoothnessCutoff = config.Bind("Look", "Smoothness Cutoff", 0f,
                 new ConfigDescription("Only surfaces at least this smooth (G-buffer smoothness) get reflections. " +
-                    "Lower = more surfaces reflect (wet asphalt/concrete pick up soft reflections) but more " +
-                    "rays traced; raise for glossy-only and a little more performance.",
+                    "0 = every surface with any gloss, as the game's own SSR does (with Game Gloss Curve on, rough ones " +
+                    "reflect only faintly); surfaces with no gloss at all never trace. Raise for glossy-only and a " +
+                    "little more performance.",
                     new AcceptableValueRange<float>(0f, 1f)));
             ReflSoftness = config.Bind("Look", "Reflection Softness", 0.0f,
                 new ConfigDescription("Baseline blur for ALL reflections (in mip levels), on top of the " +
                     "roughness-driven glossy blur. 0 = razor sharp; ~0.5 = a subtle filmic soften; 1.5+ = " +
                     "visibly soft. Needs Glossy Reflections ON.",
                     new AcceptableValueRange<float>(0f, 3f)));
-            Foliage = config.Bind("Look", "Foliage Gloss Reduction", 0.9f,
-                new ConfigDescription("Reduces the gloss/reflection on grass (can have an effect on other surfaces)",
-                    new AcceptableValueRange<float>(0f, 1f)));
             RainFlow = config.Bind("Look", "Rain Streaks On Walls", 0.4f,
                 new ConfigDescription("Adds a flowing down effect on vertical surfaces",
                     new AcceptableValueRange<float>(0f, 1f)));
+            GlossCurve = config.Bind("Look", "Game Gloss Curve", ESsrGlossCurve.Strength,
+                "How strong a surface's reflection is for its smoothness. Strength = the game's own SSR: the reflection " +
+                "seen edge-on follows smoothness cubed, so a half-glossy surface (leaves, wet grass, painted metal) " +
+                "reflects far less while mirror-like ones (water, glass) stay as they are. StrengthAndBlur = its blur " +
+                "too: everything that is not mirror-like reflects softer. Off = the reflection as before.");
+            GameBlend = config.Bind("Look", "Blend Like The Game", true,
+                "On = where a reflection lands, only the game's own sky reflection on that surface is taken away and the " +
+                "new reflection is added on top, as the game's SSR does; the surface keeps its own colour and light. " +
+                "Off = the whole pixel is faded toward the reflection by how strong it is, which edge-on also fades out " +
+                "the surface's own colour (leaves seen edge-on turn into a mirror).");
+            InstancedFoliage = config.Bind("Look", "Instanced Foliage Reflection", 0.25f,
+                new ConfigDescription("How much reflection is kept on what the game draws with GPU Instancer - grass and " +
+                    "the plants it draws. 0.25 = the game's own share for them; 1 = no change. Needs the game's SSR " +
+                    "setting, TAA or an upscaler on (they make GPU Instancer write the depth this is read from). " +
+                    "Debug View = InstancedFoliage shows those pixels in blue.",
+                    new AcceptableValueRange<float>(0f, 1f)));
+            OcclusionDims = config.Bind("Look", "Occlusion Dims Reflections", true,
+                "The game's own rule for its sky reflection, applied to these: a surface reflects less the more the game " +
+                "marks it as occluded. The game draws every tree and grass blade as fully occluded, so the gloss rain puts " +
+                "on leaves stays dim (rain raises their occlusion only a little); dark crevices reflect less too. Off = " +
+                "occlusion is ignored. Debug View = Occlusion shows it (black = no reflection).");
 
             // ---- Look: advanced tuning ----
             EdgeFade = config.Bind("Look", "Edge Fade", 0.2f,
@@ -199,12 +230,6 @@ namespace ReflectSix.Source
                     "blinding dots. Clamps a reflected pixel's brightness relative to its neighbourhood, so " +
                     "real coherent lights stay bright while lone sparkles are reined in. 0 = off; 1 = strong.",
                     new AcceptableValueRange<float>(0f, 1f)));
-            FoliageF0 = config.Bind("Look", "Foliage F0 Threshold", 0.065f,
-                Adv("The specular-colour level at/below which a surface counts as grass (\"declares no " +
-                    "specular response\"). Tune it with Debug View = FoliageMask: RED marks what this " +
-                    "catches — raise until grass turns red, and stop before WATER does (real water sits " +
-                    "around 0.02, glass around 0.04). Only matters when Foliage Gloss Reduction is above 0.",
-                    new AcceptableValueRange<float>(0.001f, 0.08f)));
             SelfExclusion = config.Bind("Look", "Self-Reflection Exclusion", 0.0f,
                 Adv("Reflection rays ignore anything closer to the camera than this (metres). In VR your " +
                     "rendered body, arms, gun and wrist UI hover over the ground and can otherwise reflect " +

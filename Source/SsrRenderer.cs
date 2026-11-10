@@ -666,12 +666,21 @@ namespace ReflectSix.Source
             _mat.SetFloat("_SsrMaxDist", SsrConfig.MaxDistance.Value);
             _mat.SetFloat("_SsrThickness", SsrConfig.Thickness.Value);
             _mat.SetFloat("_SsrIntensity", SsrConfig.Intensity.Value);
-            _mat.SetFloat("_SsrSmoothCutoff", SsrConfig.SmoothnessCutoff.Value);
+            // never below one 8-bit step: a smoothness-0 pixel (dry foliage, bare terrain) reflects nothing at any cutoff,
+            // so it traces no ray
+            _mat.SetFloat("_SsrSmoothCutoff", Mathf.Max(SsrConfig.SmoothnessCutoff.Value, 1f / 255f));
             _mat.SetFloat("_SsrEdgeFade", SsrConfig.EdgeFade.Value);
             _mat.SetFloat("_SsrEdgeSoft", 0f);   // Silhouette Fade removed: faded hits let sky bleed through
             _mat.SetFloat("_SsrFirefly", SsrConfig.Firefly.Value);
-            _mat.SetFloat("_SsrFoliage", SsrConfig.Foliage.Value);
-            _mat.SetFloat("_SsrFoliageF0", SsrConfig.FoliageF0.Value);
+            // The game SSR's rules: its gloss curve, its blend (needs the ambient pass's reflection strength, else the old
+            // blend), and its share for what GPU Instancer draws (needs GPU Instancer's depth this frame).
+            float gameReflInt = SsrGameAmbient.ReflectionIntensity;
+            _mat.SetFloat("_SsrGlossCurve", (int)SsrConfig.GlossCurve.Value);
+            _mat.SetFloat("_SsrGameBlend", SsrConfig.GameBlend.Value && gameReflInt >= 0f ? 1f : 0f);
+            _mat.SetFloat("_SsrGameReflInt", Mathf.Max(gameReflInt, 0f));
+            _mat.SetFloat("_SsrGpuiFoliage", SsrConfig.InstancedFoliage.Value);
+            _mat.SetFloat("_SsrGpuiOn", SsrGameAmbient.GpuiDepthValid ? 1f : 0f);
+            _mat.SetFloat("_SsrOccRefl", SsrConfig.OcclusionDims.Value ? 1f : 0f);
             _mat.SetFloat("_SsrSelfZ", SsrConfig.SelfExclusion.Value);
             _mat.SetFloat("_SsrSkimMin", SsrConfig.SkimRejection.Value);
             _mat.SetFloat("_SsrSpecAA", SsrConfig.SpecularAA.Value);

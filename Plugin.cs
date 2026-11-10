@@ -8,7 +8,7 @@ using UnityEngine.SceneManagement;
 
 namespace ReflectSix
 {
-    [BepInPlugin("com.matsix.reflectsix", "ReflectSix", "1.0.1")]
+    [BepInPlugin("com.matsix.reflectsix", "ReflectSix", "1.0.2")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource MyLog;
@@ -28,6 +28,7 @@ namespace ReflectSix
         private void Update()
         {
             SsrBakedCube.Tick();
+            SsrGameAmbient.Tick();
             if (!SsrConfig.CostNow.Value) return;
             SsrConfig.CostNow.Value = false;
             if (!SsrBench.Running) StartCoroutine(SsrBench.Run());

@@ -9,6 +9,7 @@ Support my work on Ko-fi: https://ko-fi.com/matsix
 ## Features
 
 - Smooth reflections on rough surfaces
+- Follows the game's own rules for how strongly things reflect, so leaves and grass stay natural in the rain
 - Water flows down walls when it's raining
 - Compatible with CloudSix, base game SSR does not reflect my clouds
 - Compatible with SPT-VR
@@ -39,10 +40,13 @@ These are the main ones. The Advanced view has many more.
 | Enabled | On | Turns ReflectSix's reflections on or off. |
 | Disable Tarkov SSR Render | On | Stops the game's own SSR from drawing, so the two never stack. |
 | Intensity | 1 | Reflection strength. 1 is physically based. |
-| Smoothness Cutoff | 0.55 | Only surfaces at least this smooth reflect. Lower it for more wet-looking surfaces, at more cost. |
+| Smoothness Cutoff | 0 | Only surfaces at least this smooth reflect. 0 lets every surface with any gloss reflect, as the game's own SSR does; raise it for glossy-only and a little more performance. |
 | Reflection Softness | 0 | Extra blur on every reflection. 0 is razor sharp. |
-| Foliage Gloss Reduction | 0.9 | Keeps grass from looking glossy. |
 | Rain Streaks On Walls | 0.4 | Strength of the rain running down walls. |
+| Game Gloss Curve | Strength | The game SSR's strength curve: half-glossy surfaces (leaves, wet grass, painted metal) reflect far less, mirror-like ones stay the same. StrengthAndBlur softens those reflections too; Off is the old curve. |
+| Blend Like The Game | On | Where a reflection lands, only the game's own sky reflection is swapped for it; the surface keeps its own colour. Off fades the whole pixel toward the reflection. |
+| Instanced Foliage Reflection | 0.25 | Reflection kept on the grass and plants the game draws with GPU Instancer. 0.25 is the game's own share; 1 is no change. |
+| Occlusion Dims Reflections | On | The game's own occlusion rule for its sky reflection, applied to these. Trees and grass are drawn fully occluded, so rain gloss on leaves stays dim; crevices reflect less too. |
 | Temporal Smoothing | 0.8 | Denoises the reflections, at the cost of some smudging in motion. |
 | Ray Steps | 160 | How far a ray can travel across the screen. |
 | Max Distance | 160 | How far a reflected ray may travel, in metres. |
