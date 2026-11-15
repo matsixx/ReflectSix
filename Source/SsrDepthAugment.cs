@@ -79,7 +79,7 @@ namespace ReflectSix.Source
                     logged++;
                 }
             }
-            Plugin.MyLog.LogInfo($"[ReflectSix] Glass depth cap: {_glass.Count} glass renderers found.");
+            Plugin.LogDetail($"[ReflectSix] Glass depth cap: {_glass.Count} glass renderers found.");
         }
 
         public static void Clear()

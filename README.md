@@ -44,7 +44,6 @@ These are the main ones. The Advanced view has many more.
 | Reflection Softness | 0 | Extra blur on every reflection. 0 is razor sharp. |
 | Rain Streaks On Walls | 0.4 | Strength of the rain running down walls. |
 | Game Gloss Curve | Strength | The game SSR's strength curve: half-glossy surfaces (leaves, wet grass, painted metal) reflect far less, mirror-like ones stay the same. StrengthAndBlur softens those reflections too; Off is the old curve. |
-| Blend Like The Game | On | Where a reflection lands, only the game's own sky reflection is swapped for it; the surface keeps its own colour. Off fades the whole pixel toward the reflection. |
 | Instanced Foliage Reflection | 0.25 | Reflection kept on the grass and plants the game draws with GPU Instancer. 0.25 is the game's own share; 1 is no change. |
 | Occlusion Dims Reflections | On | The game's own occlusion rule for its sky reflection, applied to these. Trees and grass are drawn fully occluded, so rain gloss on leaves stays dim; crevices reflect less too. |
 | Temporal Smoothing | 0.8 | Denoises the reflections, at the cost of some smudging in motion. |

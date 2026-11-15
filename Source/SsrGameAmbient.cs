@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace ReflectSix.Source
 {
-    // What "Blend Like The Game" and the instanced-foliage share need from the game each frame.
+    // What the game's blend (its cube reflection out, ours on top) and the instanced-foliage share need from the game each frame.
     // The game's ambient pass (AmbientLight's "Custom Ambient" buffer) adds its sky-cube reflection to the picture
     // multiplied by _ReflectionIntensity, which lives in a MaterialPropertyBlock (1 with the game's SSR setting on,
     // else the rain-wetting curve x ReflectionIntensity), so it is read from there, not from the material.
@@ -43,13 +43,20 @@ namespace ReflectSix.Source
             }
         }
 
+        private static readonly int IdSsrFactor = Shader.PropertyToID("_SSRFactor");
+
         private static void Find()
         {
+            bool first = _ambient == null && _findAgainAt >= 0f;
             _ambient = Object.FindObjectOfType<AmbientLight>();
+            // the share of the cube the game's SSR takes out (LevelSettings, per map): what Disable Tarkov SSR Render
+            // takes out where ours traces and finds nothing
+            if (first)
+                Plugin.LogDetail($"[ReflectSix] This map's SSR factor (_SSRFactor): {Shader.GetGlobalFloat(IdSsrFactor):0.###}");
             if (SsrConfig.Debug.Value)
                 Plugin.MyLog.LogInfo(_ambient != null
                     ? $"[ReflectSix] Game ambient pass found: reflection intensity {ReflectionIntensity:0.###}."
-                    : "[ReflectSix] No AmbientLight in this raid: Blend Like The Game falls back to the old blend.");
+                    : "[ReflectSix] No AmbientLight in this raid: reflections fade the pixel toward them (the old blend).");
         }
 
         // The ambient pass's _ReflectionIntensity this frame; -1 = no ambient pass known (the shader then blends as before).

@@ -24,7 +24,7 @@ namespace ReflectSix.Source
         SceneMip,       // the sanitized scene copy at mip 3 — what the cone fetch / firefly reference read
         HistoryLength,  // new denoiser: frames accumulated per pixel (green), red = history rejected, blue = edge fetch
         MotionCheck,    // new denoiser: motion vectors vs camera-only motion (static world must stay black)
-        GameReflection, // the game's own cube reflection: what Blend Like The Game takes out where ours lands
+        GameReflection, // the game's own cube reflection: what the blend takes out
         Occlusion,      // G-buffer occlusion: what Occlusion Dims Reflections weighs by (trees and grass are drawn black)
     }
 
@@ -81,7 +81,6 @@ namespace ReflectSix.Source
         public static ConfigEntry<bool> RtOnly;
         public static ConfigEntry<bool> NoBakedCube;
         public static ConfigEntry<ESsrGlossCurve> GlossCurve;
-        public static ConfigEntry<bool> GameBlend;
         public static ConfigEntry<float> InstancedFoliage;
         public static ConfigEntry<bool> OcclusionDims;
 
@@ -160,7 +159,8 @@ namespace ReflectSix.Source
                 new ConfigDescription("Only surfaces at least this smooth (G-buffer smoothness) get reflections. " +
                     "0 = every surface with any gloss, as the game's own SSR does (with Game Gloss Curve on, rough ones " +
                     "reflect only faintly); surfaces with no gloss at all never trace. Raise for glossy-only and a " +
-                    "little more performance.",
+                    "little more performance. With Disable Tarkov SSR Render on, the surfaces below it lose the game's " +
+                    "own sky reflection too (it shows sky through walls and roofs, as a bright rim on rough edges).",
                     new AcceptableValueRange<float>(0f, 1f)));
             ReflSoftness = config.Bind("Look", "Reflection Softness", 0.0f,
                 new ConfigDescription("Baseline blur for ALL reflections (in mip levels), on top of the " +
@@ -175,11 +175,6 @@ namespace ReflectSix.Source
                 "seen edge-on follows smoothness cubed, so a half-glossy surface (leaves, wet grass, painted metal) " +
                 "reflects far less while mirror-like ones (water, glass) stay as they are. StrengthAndBlur = its blur " +
                 "too: everything that is not mirror-like reflects softer. Off = the reflection as before.");
-            GameBlend = config.Bind("Look", "Blend Like The Game", true,
-                "On = where a reflection lands, only the game's own sky reflection on that surface is taken away and the " +
-                "new reflection is added on top, as the game's SSR does; the surface keeps its own colour and light. " +
-                "Off = the whole pixel is faded toward the reflection by how strong it is, which edge-on also fades out " +
-                "the surface's own colour (leaves seen edge-on turn into a mirror).");
             InstancedFoliage = config.Bind("Look", "Instanced Foliage Reflection", 0.25f,
                 new ConfigDescription("How much reflection is kept on what the game draws with GPU Instancer - grass and " +
                     "the plants it draws. 0.25 = the game's own share for them; 1 = no change. Needs the game's SSR " +
@@ -249,11 +244,12 @@ namespace ReflectSix.Source
                 Adv("Reflections always show the sky where they should: rays that reach sky ON SCREEN " +
                     "fetch it exactly (clouds included), and when the sky isn't in view, CloudSix's live " +
                     "sky map fills in — gated by a roof check so interiors never reflect phantom clouds. " +
-                    "Needs CloudSix's 'Publish Sky For Reflections' for the not-on-screen half."));
+                    "Without CloudSix's 'Publish Sky For Reflections' the game's own sky (the one its reflections " +
+                    "use) fills in instead."));
             WorldRays = config.Bind("Look", "Off-Screen Rays Through TraceSix", true,
                 Adv("With TraceSix running, a reflection ray that leaves the picture carries on through TraceSix's " +
                     "voxel world: a puddle under a roof mirrors the sky past the roof's edge and nothing " +
-                    "through the roof itself (that part needs CloudSix's published sky). Off, or without TraceSix: the " +
+                    "through the roof itself. Off, or without TraceSix: the " +
                     "roof check decides, asked where the ray was last seen on screen. Scopes always use the roof check."));
             WorldRaysSoft = config.Bind("Look", "Off-Screen Rays Soft Edges", true,
                 Adv("The march through TraceSix's voxels blends the eight voxels around each sample, so the " +
@@ -273,11 +269,11 @@ namespace ReflectSix.Source
                     "screen is reflected in TraceSix's small texture copies instead of the picture's full detail (the voxels' " +
                     "colours with its Ray-Traced Textures off), and bots, loot and grass are not reflected. " +
                     "Rough surfaces are blurred as the screen-space ones are: each pixel traces a ray from its glossy " +
-                    "lobe and the denoiser averages them. Without the ray tracing (VR, TraceSix's ray tracing off), or " +
-                    "without CloudSix's published sky (the sky past what the rays hit): the normal reflections, with the " +
-                    "ray-traced rays for what leaves the picture."));
+                    "lobe and the denoiser averages them. The sky past what the rays hit is CloudSix's published sky, else " +
+                    "the game's own. Without the ray tracing (VR, TraceSix's ray tracing off), or with Sky In Reflections " +
+                    "off: the normal reflections, with the ray-traced rays for what leaves the picture."));
             NoBakedCube = config.Bind("Look", "Remove Baked Cube Reflections", true,
-                "Many of the game's surfaces - concrete and tiled floors, guns, gear - add a fixed pre-made picture of " +
+                "Many of the game's surfaces - concrete and tiled floors, puddles, guns, gear - add a fixed pre-made picture of " +
                 "their surroundings (a cubemap) as a shine, the same in every room, day or night, and the real " +
                 "reflections then land on top of it. On = that shine is taken off every solid surface while ReflectSix " +
                 "is on; their own specular highlight stays. Off, or ReflectSix off: the game's shine is back. Glass " +

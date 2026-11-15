@@ -8,10 +8,16 @@ using UnityEngine.SceneManagement;
 
 namespace ReflectSix
 {
-    [BepInPlugin("com.matsix.reflectsix", "ReflectSix", "1.0.2")]
+    [BepInPlugin("com.matsix.reflectsix", "ReflectSix", "1.0.3")]
     public class Plugin : BaseUnityPlugin
     {
         public static ManualLogSource MyLog;
+
+        // Per-raid detail (what was found and changed): only with Debug Log on; errors and warnings go out always.
+        internal static void LogDetail(string message)
+        {
+            if (SsrConfig.Debug != null && SsrConfig.Debug.Value) MyLog.LogInfo(message);
+        }
 
         private void Awake()
         {

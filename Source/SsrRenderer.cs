@@ -21,6 +21,8 @@ namespace ReflectSix.Source
         // "Off-Screen Rays Ray-Traced": the passes that make the rays (SsrRtRays) and read TraceSix's answers (-2 = not looked up)
         private static int _pRtRays = -2, _pWorldRtOpen = -2, _pWorldRtCol = -2;
         private static readonly int IdGiReflFrame = Shader.PropertyToID("_GiRtReflFrame");
+        private static readonly int IdSkyReflMap = Shader.PropertyToID("_SsrSkyReflMap");
+        private static readonly int IdGameSkyCube = Shader.PropertyToID("_MyGlobalReflectionProbe");
         internal static int PassRtRays
         {
             get
@@ -676,8 +678,12 @@ namespace ReflectSix.Source
             // blend), and its share for what GPU Instancer draws (needs GPU Instancer's depth this frame).
             float gameReflInt = SsrGameAmbient.ReflectionIntensity;
             _mat.SetFloat("_SsrGlossCurve", (int)SsrConfig.GlossCurve.Value);
-            _mat.SetFloat("_SsrGameBlend", SsrConfig.GameBlend.Value && gameReflInt >= 0f ? 1f : 0f);
+            // the game's blend: its cube reflection taken out, ours added on top (the surface keeps its own colour); the
+            // old fade toward the reflection only without the game's ambient pass to read the cube from
+            _mat.SetFloat("_SsrGameBlend", gameReflInt >= 0f ? 1f : 0f);
             _mat.SetFloat("_SsrGameReflInt", Mathf.Max(gameReflInt, 0f));
+            // (a view that renders ours always has the game's SSR suppressed with the setting: SuppressGameSsrPatch)
+            _mat.SetFloat("_SsrGameSsrOff", SsrConfig.SuppressGameSsr.Value ? 1f : 0f);
             _mat.SetFloat("_SsrGpuiFoliage", SsrConfig.InstancedFoliage.Value);
             _mat.SetFloat("_SsrGpuiOn", SsrGameAmbient.GpuiDepthValid ? 1f : 0f);
             _mat.SetFloat("_SsrOccRefl", SsrConfig.OcclusionDims.Value ? 1f : 0f);
@@ -713,13 +719,21 @@ namespace ReflectSix.Source
             _mat.SetFloat("_SsrFlipRayY", 0f);   // VR Trace Flip removed (was a confirmed-wrong diagnostic)
 
             // Sky in reflections — hybrid: the on-screen sky-exit fetch always works (gated only by the
-            // config); the sky-MAP half needs CloudSix's published map AND feeds the roof grid (a small
-            // world-anchored grid of upward rays — per-surface indoor suppression without triggers).
+            // config); the off-screen half needs a sky source AND feeds the roof grid (a small world-anchored
+            // grid of upward rays — per-surface indoor suppression without triggers). The source is CloudSix's
+            // published map, else the game's own sky: the cube its ambient pass reflects (AmbientLight renders
+            // the TOD sky into it; only once this raid's AmbientLight is known, so never a finished raid's).
             bool skyExitOn = SsrConfig.SkyRefl.Value;
-            Texture skyMapTex = Shader.GetGlobalTexture("_SsrSkyReflMap");
-            bool skyMapOn = skyExitOn && skyMapTex != null;
+            Texture skyMapTex = Shader.GetGlobalTexture(IdSkyReflMap);
+            Texture skyCube = skyMapTex == null && gameReflInt >= 0f ? Shader.GetGlobalTexture(IdGameSkyCube) : null;
+            bool skyFromCube = skyCube != null && skyCube.dimension == TextureDimension.Cube;
+            bool skyMapOn = skyExitOn && (skyMapTex != null || skyFromCube);
+            Texture skySource = skyMapTex != null ? skyMapTex : skyFromCube ? skyCube : null;
             _mat.SetFloat("_SsrSkyOn", skyExitOn ? 1f : 0f);
             _mat.SetFloat("_SsrSkyMapOn", skyMapOn ? 1f : 0f);
+            _mat.SetFloat("_SsrSkyFromCube", skyMapOn && skyMapTex == null ? 1f : 0f);
+            // the shader's sky mip is for the map's 81.5 texels a radian; a cube face spans 90 degrees
+            _mat.SetFloat("_SsrSkyLodBias", skyFromCube ? Mathf.Log(skyCube.width / (Mathf.PI * 0.5f) / 81.5f, 2f) : 0f);
             // A missed ray carries on through TraceSix's voxel world when TraceSix runs (see GiVoxelsUp). A scope
             // keeps its own roof grid: what it looks at is out where the voxels are 2 m and 8 m a side.
             // The march is a pass of its own (PassWorld): a bundle without it has no voxel rays.
@@ -737,8 +751,8 @@ namespace ReflectSix.Source
             bool rtOn = worldOn && SsrConfig.WorldRaysRt.Value && PassRtRays >= 0 && SsrRtRays.OfferedFrame == Time.frameCount
                         && SsrRtRays.OfferW == traceW && SsrRtRays.OfferH == traceH && giReflAt > 0f && Time.frameCount - giReflAt < 0.5f;
             _mat.SetFloat("_SsrRtOn", rtOn ? 1f : 0f);
-            // (no march: the BVH answers every ray - its misses need the map for their sky; without one the normal trace runs,
-            // which still finds the sky on screen, with the ray-traced rays for what leaves the picture)
+            // (no march: the BVH answers every ray - its misses need a sky source (the map or the game's cube); without one the
+            // normal trace runs, which still finds the sky on screen, with the ray-traced rays for what leaves the picture)
             bool rtOnly = rtOn && skyMapOn && SsrConfig.RtOnly.Value;
             _mat.SetFloat("_SsrRtOnly", rtOnly ? 1f : 0f);
             _mat.SetFloat("_SsrVoxBlend", SsrConfig.WorldRaysSoft.Value ? 1f : 0f);
@@ -752,9 +766,9 @@ namespace ReflectSix.Source
             // in, the shade passes are told there are none.
             int block = rtOn ? 1 : Mathf.Max(1, SsrConfig.WorldRaySpacing.Value / (halfRes ? 2 : 1));
             _mat.SetVector("_SsrWorldBlock", new Vector4(block, 0f, 0f, 0f));
-            // Lobe-matched sky blur needs the map's mip chain; an old CloudSix DLL publishes mip-0 only
+            // Lobe-matched sky blur needs the source's mip chain; an old CloudSix DLL publishes mip-0 only
             // (mipmapCount 1) and this degrades to the sharp fetch.
-            _mat.SetFloat("_SsrSkyMapMaxLod", skyMapOn ? Mathf.Max(0, skyMapTex.mipmapCount - 1) : 0f);
+            _mat.SetFloat("_SsrSkyMapMaxLod", skyMapOn ? Mathf.Max(0, skySource.mipmapCount - 1) : 0f);
             // Rain flow on walls: strength = config x a LIVE rain envelope. RainController.Intensity is
             // the game's own static current-rain value; the envelope trails it by ~20s so rivulets keep
             // running briefly after a shower instead of snapping off (the persistent SHEEN is the game's
@@ -815,7 +829,7 @@ namespace ReflectSix.Source
                 Plugin.MyLog.LogInfo($"[ReflectSix] {eye}{(scope ? " scope" : "")} src={source.width}x{source.height} " +
                     $"px={pc.pixelWidth}x{pc.pixelHeight} rect=({pc.rect.x:F3},{pc.rect.y:F3},{pc.rect.width:F3},{pc.rect.height:F3}) " +
                     $"depth={(dt != null ? dt.width + "x" + dt.height : "null")}{mdelta} " +
-                    $"sky={(skyMapOn ? "MAP(seamless)" : (skyExitOn ? "SCREEN-ONLY(no CloudSix map: seams at the ray-budget edge)" : "off"))} " +
+                    $"sky={(skyMapOn ? (skyMapTex != null ? "CloudSix MAP(seamless)" : "the game's sky cube (no CloudSix map)") : (skyExitOn ? "SCREEN-ONLY(no CloudSix map, no game sky cube: seams at the ray-budget edge)" : "off"))} " +
                     $"offScreenRays={(rtOn ? (rtOnly ? "ALL rays through TraceSix ray tracing (no screen-space march)" : "TraceSix ray tracing (one mirror ray per trace pixel, what it hits shown)") : voxOn ? (SsrConfig.WorldRaysSoft.Value ? "TraceSix voxels (soft edges" + (vxCov ? ", filtered copies, " + _vxCovDrawn + " redrawn so far)" : ", read voxel by voxel)") : "TraceSix voxels") + ", one march per " + block + "x" + block + " trace pixels" : "roof grid")} " +
                     $"rainFlow={rainFlow:F2}");
             }
@@ -1306,7 +1320,7 @@ namespace ReflectSix.Source
                 if (_mat == null)
                     Plugin.MyLog.LogError("[ReflectSix] 'reflectSixMat' material not found in the bundle (an old SSRSix bundle?).");
                 else
-                    Plugin.MyLog.LogInfo("[ReflectSix] Material loaded.");
+                    Plugin.LogDetail("[ReflectSix] Material loaded.");
             }
             catch (System.Exception e)
             {
